@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     llm_model: str = "gemini-2.5-flash"
+    llm_top_n: int = 10  # max trade suggestions returned per LLM run
+    llm_candidate_pool: int = 25  # top-by-raw-confidence sent to LLM for ranking
 
     database_url: str = "sqlite:///./trading_agent.db"
 

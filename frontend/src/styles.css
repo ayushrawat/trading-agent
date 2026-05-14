@@ -95,7 +95,17 @@ body {
   align-items: center;
   gap: 10px;
 }
-.symbol { font-size: 18px; font-weight: 700; }
+.symbol-block { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.symbol { font-size: 18px; font-weight: 700; line-height: 1.1; }
+.name {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  margin-top: 2px;
+}
 .tag {
   font-size: 11px;
   font-weight: 700;

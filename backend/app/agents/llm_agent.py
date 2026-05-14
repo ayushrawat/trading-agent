@@ -13,22 +13,24 @@ from .signal_agent import run_signal_agent
 
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a disciplined Indian-markets trading analyst supporting a retail trader.
-You receive (a) rule-based technical candidates for NIFTY and SENSEX and (b) recent financial news headlines.
-Your job is to keep, drop, or adjust each candidate based on whether the news flow supports or contradicts the technical setup, and to write a short, plain-English rationale.
+SYSTEM_PROMPT = """You are a disciplined Indian-markets equity analyst supporting a retail trader.
+You receive (a) rule-based technical candidates across NIFTY 100 stocks and (b) recent financial news headlines.
+
+Your job: pick the BEST TRADES from the candidate pool — those where the news flow meaningfully supports the technical setup, or at minimum does not contradict it. Drop the rest.
 
 Rules:
-- Only output trades you would actually take. If news strongly contradicts the technical setup, drop the candidate.
-- Confidence is a float 0..1. Be conservative — 0.8+ requires strong agreement between technicals AND news.
-- Rationale must be 1-2 sentences and cite which news_id(s) influenced the call when relevant.
-- Never invent numbers. Use the entry/stop/target from the candidate unless news justifies an adjustment, in which case keep changes small.
+- Return at most TOP_N suggestions, ranked best first. Quality over quantity — if only 3 trades are genuinely supported by news, return 3.
+- Match news to specific stocks by company name (provided in each candidate). A headline about "Reliance Industries" supports a RELIANCE candidate; sector news (e.g. "oil prices surge") supports relevant stocks (ONGC, BPCL, HPCL).
+- Confidence is a float 0..1. Spread the range to differentiate: 0.8+ = strong news+technical alignment for that stock; 0.5-0.7 = decent technical with neutral news; below 0.5 = drop it.
+- Rationale must be 1-2 sentences and cite which news_id(s) influenced the call when relevant. If no news directly supports, say so plainly ("Pure technical setup; no direct news catalyst").
+- Never invent numbers. Use the entry/stop/target from the candidate as-is.
 - Output STRICT JSON only — no markdown, no prose outside the JSON object.
 
 Output schema:
 {
   "suggestions": [
     {
-      "symbol": "NIFTY" | "SENSEX",
+      "symbol": string,          // ticker as provided in the candidate
       "direction": "LONG" | "SHORT",
       "entry": number,
       "stop": number,
@@ -39,7 +41,7 @@ Output schema:
     }
   ]
 }
-If you would drop all candidates, return {"suggestions": []}."""
+If no candidate is worth a trade, return {"suggestions": []}."""
 
 
 def _recent_news(limit: int = 30) -> list[NewsArticle]:
@@ -124,15 +126,18 @@ def run_llm_agent() -> int:
     Provider-agnostic: uses any OpenAI-compatible endpoint via base_url.
     Defaults target Gemini 2.5 Flash on Google AI Studio.
     """
-    candidates = run_signal_agent()
-    if not candidates:
+    all_candidates = run_signal_agent()
+    if not all_candidates:
         log.info("llm_agent: no candidates, skipping")
         return 0
 
+    # Trim to the strongest pool by raw rule confidence to keep the prompt
+    # focused (and the bill small). The LLM then picks the final TOP_N.
+    candidates = all_candidates[: settings.llm_candidate_pool]
     candidates_by_symbol = {c["symbol"]: c for c in candidates}
 
     if not settings.llm_api_key:
-        log.warning("llm_agent: LLM_API_KEY missing — saving raw candidates without LLM ranking")
+        log.warning("llm_agent: LLM_API_KEY missing — saving top %d raw candidates", settings.llm_top_n)
         fallback = [{
             "symbol": c["symbol"],
             "direction": c["direction"],
@@ -140,13 +145,15 @@ def run_llm_agent() -> int:
             "stop": c["stop"],
             "target": c["target"],
             "confidence": c["confidence"],
-            "rationale": "Technical setup only (no LLM key configured): " + ", ".join(c["signals"]),
+            "rationale": f"Technical setup only (no LLM key): {', '.join(c['signals'])}",
             "news_refs": [],
-        } for c in candidates]
+        } for c in candidates[: settings.llm_top_n]]
         return _persist(fallback, candidates_by_symbol)
 
     client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
-    news = _recent_news()
+    news = _recent_news(limit=40)
+    # bake TOP_N into the system prompt so the model honours the cap
+    system_prompt = SYSTEM_PROMPT.replace("TOP_N", str(settings.llm_top_n))
     user_prompt = _build_user_prompt(candidates, news)
 
     # Gemini 2.5 Flash includes "thinking" tokens by default which eat into
@@ -155,11 +162,11 @@ def run_llm_agent() -> int:
     # to a call without it on error).
     common_kwargs = dict(
         model=settings.llm_model,
-        max_tokens=1500,
+        max_tokens=4000,  # higher cap — up to TOP_N suggestions with rationales
         temperature=0.3,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
     )

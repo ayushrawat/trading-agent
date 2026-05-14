@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..db import SessionLocal
 from ..models import MarketBar
+from ..universe import NIFTY_100
 
 log = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class Candidate:
     symbol: str
+    name: str  # human-readable company name, helps LLM match news to ticker
     direction: str  # LONG or SHORT
     entry: float
     stop: float
@@ -76,7 +78,7 @@ def _load_bars(symbol: str) -> pd.DataFrame:
     return df
 
 
-def _evaluate(symbol: str, df: pd.DataFrame) -> Optional[Candidate]:
+def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
     if len(df) < 60:
         return None
 
@@ -155,6 +157,7 @@ def _evaluate(symbol: str, df: pd.DataFrame) -> Optional[Candidate]:
 
     return Candidate(
         symbol=symbol,
+        name=name,
         direction=direction,
         entry=round(last_close, 2),
         stop=round(stop, 2),
@@ -174,14 +177,18 @@ def _evaluate(symbol: str, df: pd.DataFrame) -> Optional[Candidate]:
 
 
 def run_signal_agent() -> list[dict]:
-    """Compute rule-based candidates. Returns list of dict candidates."""
+    """Run the rule engine on every stock in the universe. Returns candidates
+    sorted by descending raw confidence (caller usually trims to top N before
+    handing to the LLM)."""
     candidates: list[Candidate] = []
-    for symbol in ("NIFTY", "SENSEX"):
-        df = _load_bars(symbol)
+    for ticker, name, _yf in NIFTY_100:
+        df = _load_bars(ticker)
         if df.empty:
             continue
-        c = _evaluate(symbol, df)
+        c = _evaluate(ticker, name, df)
         if c is not None:
             candidates.append(c)
-    log.info("signal_agent: %d candidates", len(candidates))
+    candidates.sort(key=lambda c: c.confidence, reverse=True)
+    log.info("signal_agent: %d candidates (top conf %.2f)",
+             len(candidates), candidates[0].confidence if candidates else 0.0)
     return [asdict(c) for c in candidates]

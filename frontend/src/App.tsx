@@ -15,7 +15,12 @@ function TradeCard({ trade, news }: { trade: Trade; news: NewsItem[] }) {
   return (
     <article className={`card ${isLong ? "long" : "short"}`}>
       <header>
-        <div className="symbol">{trade.symbol}</div>
+        <div className="symbol-block">
+          <div className="symbol">{trade.symbol}</div>
+          {trade.name && trade.name !== trade.symbol && (
+            <div className="name">{trade.name}</div>
+          )}
+        </div>
         <div className={`tag ${isLong ? "tag-long" : "tag-short"}`}>{trade.direction}</div>
         <div className="conf" title="confidence">
           {trade.confidence != null ? `${Math.round(trade.confidence * 100)}%` : "—"}
@@ -95,7 +100,7 @@ export default function App() {
   return (
     <div className="page">
       <header className="topbar">
-        <h1>Trading Agent <span>· NIFTY / SENSEX</span></h1>
+        <h1>Trading Agent <span>· NIFTY 100 picks</span></h1>
         <button onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "Refreshing…" : "Refresh now"}
         </button>

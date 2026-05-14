@@ -2,6 +2,7 @@ export interface Trade {
   id: number;
   created_at: string;
   symbol: string;
+  name: string;
   direction: "LONG" | "SHORT";
   entry: number | null;
   stop: number | null;

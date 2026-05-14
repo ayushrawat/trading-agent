@@ -5,20 +5,26 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
+from sqlalchemy import func
 
 from ..agents.llm_agent import run_llm_agent
 from ..agents.market_agent import run_market_agent
 from ..agents.news_agent import run_news_agent
 from ..db import SessionLocal
 from ..models import TradeSuggestion
+from ..universe import NIFTY_100
 
 router = APIRouter()
+
+# ticker -> human-readable name
+_NAME_BY_TICKER: dict[str, str] = {t: n for (t, n, _yf) in NIFTY_100}
 
 
 class TradeOut(BaseModel):
     id: int
     created_at: datetime
     symbol: str
+    name: str
     direction: str
     entry: float | None
     stop: float | None
@@ -31,13 +37,19 @@ class TradeOut(BaseModel):
 
 
 @router.get("/trades", response_model=list[TradeOut])
-def list_trades(hours: int = 24, limit: int = 50):
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+def list_trades(limit: int = 20):
+    """Return the most recent batch of suggestions (the cluster of rows whose
+    created_at is within ~2 minutes of the latest), ordered by confidence DESC.
+    """
     with SessionLocal() as db:
+        latest = db.query(func.max(TradeSuggestion.created_at)).scalar()
+        if latest is None:
+            return []
+        cutoff = latest - timedelta(minutes=2)
         rows = (
             db.query(TradeSuggestion)
             .filter(TradeSuggestion.created_at >= cutoff)
-            .order_by(TradeSuggestion.created_at.desc())
+            .order_by(TradeSuggestion.confidence.desc().nulls_last(), TradeSuggestion.created_at.desc())
             .limit(limit)
             .all()
         )
@@ -46,6 +58,7 @@ def list_trades(hours: int = 24, limit: int = 50):
             id=r.id,
             created_at=r.created_at,
             symbol=r.symbol,
+            name=_NAME_BY_TICKER.get(r.symbol, r.symbol),
             direction=r.direction,
             entry=r.entry,
             stop=r.stop,
