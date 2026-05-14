@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from anthropic import Anthropic
+from openai import OpenAI
 
 from ..config import settings
 from ..db import SessionLocal
@@ -98,15 +98,41 @@ def _persist(suggestions: list[dict], candidates_by_symbol: dict[str, dict]) -> 
     return saved
 
 
+def _parse_json(text: str) -> dict | None:
+    text = text.strip()
+    # strip ```json ... ``` fences if a model adds them
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def run_llm_agent() -> int:
-    """Run rule engine, hand candidates+news to Claude, persist final suggestions."""
+    """Run rule engine, hand candidates+news to the LLM, persist suggestions.
+
+    Provider-agnostic: uses any OpenAI-compatible endpoint via base_url.
+    Defaults target Gemini 2.5 Flash on Google AI Studio.
+    """
     candidates = run_signal_agent()
     if not candidates:
         log.info("llm_agent: no candidates, skipping")
         return 0
-    if not settings.anthropic_api_key:
-        log.warning("llm_agent: ANTHROPIC_API_KEY missing — saving raw candidates without LLM ranking")
-        # graceful fallback: persist candidates as-is
+
+    candidates_by_symbol = {c["symbol"]: c for c in candidates}
+
+    if not settings.llm_api_key:
+        log.warning("llm_agent: LLM_API_KEY missing — saving raw candidates without LLM ranking")
         fallback = [{
             "symbol": c["symbol"],
             "direction": c["direction"],
@@ -117,37 +143,40 @@ def run_llm_agent() -> int:
             "rationale": "Technical setup only (no LLM key configured): " + ", ".join(c["signals"]),
             "news_refs": [],
         } for c in candidates]
-        return _persist(fallback, {c["symbol"]: c for c in candidates})
+        return _persist(fallback, candidates_by_symbol)
 
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    client = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
     news = _recent_news()
     user_prompt = _build_user_prompt(candidates, news)
 
+    # Gemini 2.5 Flash includes "thinking" tokens by default which eat into
+    # max_tokens. Disable via reasoning_effort='none' (Gemini honours this;
+    # other OpenAI-compatible providers either ignore it or error — fall back
+    # to a call without it on error).
+    common_kwargs = dict(
+        model=settings.llm_model,
+        max_tokens=1500,
+        temperature=0.3,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
     try:
-        resp = client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=1500,
-            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+        resp = client.chat.completions.create(reasoning_effort="none", **common_kwargs)
+    except TypeError:
+        resp = client.chat.completions.create(**common_kwargs)
     except Exception as e:
-        log.exception("llm_agent: Claude call failed: %s", e)
+        log.exception("llm_agent: %s call failed: %s", settings.llm_model, e)
         return 0
 
-    text = "".join(block.text for block in resp.content if getattr(block, "type", "") == "text").strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        # try to extract JSON object substring
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end == -1:
-            log.warning("llm_agent: non-JSON response: %s", text[:200])
-            return 0
-        try:
-            parsed = json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            log.warning("llm_agent: failed to parse JSON: %s", text[:200])
-            return 0
+    text = (resp.choices[0].message.content or "").strip()
+    parsed = _parse_json(text)
+    if parsed is None:
+        log.warning("llm_agent: failed to parse JSON: %s", text[:200])
+        return 0
 
     suggestions = parsed.get("suggestions", [])
-    return _persist(suggestions, {c["symbol"]: c for c in candidates})
+    log.info("llm_agent: %d suggestion(s) from %s", len(suggestions), settings.llm_model)
+    return _persist(suggestions, candidates_by_symbol)
