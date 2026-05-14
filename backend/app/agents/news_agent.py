@@ -11,13 +11,24 @@ from ..models import NewsArticle
 
 log = logging.getLogger(__name__)
 
+# Verified working & fresh as of 2026-05-14. Moneycontrol/BS/NDTV-Profit/FE
+# were dropped (stale, 403, or empty). See news source validation notes.
 FEEDS: list[tuple[str, str]] = [
-    ("Moneycontrol Markets", "https://www.moneycontrol.com/rss/marketreports.xml"),
-    ("Moneycontrol Business", "https://www.moneycontrol.com/rss/business.xml"),
-    ("ET Markets", "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"),
-    ("ET Economy", "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms"),
-    ("LiveMint Markets", "https://www.livemint.com/rss/markets"),
+    ("ET Top Stories", "https://economictimes.indiatimes.com/rssfeedstopstories.cms"),
+    ("ET Markets Stocks", "https://economictimes.indiatimes.com/markets/stocks/news/rssfeeds/2146843.cms"),
+    ("ET Markets IPO", "https://economictimes.indiatimes.com/markets/ipo/rssfeeds/2146846.cms"),
+    ("LiveMint News", "https://www.livemint.com/rss/news"),
+    ("LiveMint Companies", "https://www.livemint.com/rss/companies"),
+    ("LiveMint Money", "https://www.livemint.com/rss/money"),
+    ("CNBC TV18 Market", "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml"),
+    ("CNBC TV18 Economy", "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/economy.xml"),
+    ("BusinessLine Markets", "https://www.thehindubusinessline.com/markets/feeder/default.rss"),
+    ("BusinessLine Economy", "https://www.thehindubusinessline.com/economy/feeder/default.rss"),
+    ("Investing.com India", "https://in.investing.com/rss/news.rss"),
+    ("Investing.com Indicators", "https://in.investing.com/rss/news_25.rss"),
 ]
+
+_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
 def _parse_published(entry) -> datetime:
@@ -35,7 +46,7 @@ def run_news_agent() -> int:
         existing = {url for (url,) in db.query(NewsArticle.url).all()}
         for source, url in FEEDS:
             try:
-                feed = feedparser.parse(url)
+                feed = feedparser.parse(url, request_headers={"User-Agent": _UA})
             except Exception as e:
                 log.warning("feed parse failed %s: %s", url, e)
                 continue
