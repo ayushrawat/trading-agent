@@ -1,0 +1,36 @@
+# Fly.io config for the trading-agent.
+# Edit app name + region after running `fly launch --no-deploy`.
+
+app = "trading-agent"
+primary_region = "bom"   # Mumbai — closest to NSE / news sources
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  # AUTH_ENABLED set here so it survives without secrets; secrets handle the
+  # rest (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET,
+  # ALLOWED_EMAILS_RAW, LLM_API_KEY). Use `fly secrets set ...`.
+  AUTH_ENABLED = "true"
+
+[[mounts]]
+  source = "trading_agent_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

@@ -22,5 +22,20 @@ class Settings(BaseSettings):
     market_open_hhmm: str = "0915"
     market_close_hhmm: str = "1530"
 
+    # --- Auth (Google OAuth + email allowlist) ---
+    # When auth_enabled is False, all routes are open (handy for local dev).
+    auth_enabled: bool = False
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    session_secret: str = "change-me-to-a-long-random-string"
+    # Comma-separated list of allowed email addresses.
+    allowed_emails_raw: str = ""
+    # Optional override; if blank, callback URL is built from the request.
+    oauth_redirect_uri: str = ""
+
+    @property
+    def allowed_emails(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails_raw.split(",") if e.strip()}
+
 
 settings = Settings()

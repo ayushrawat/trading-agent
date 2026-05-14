@@ -1,0 +1,13 @@
+.git/
+.gitignore
+.claude/
+.venv/
+**/__pycache__/
+**/*.pyc
+**/*.db
+**/*.sqlite
+**/node_modules/
+**/dist/
+backend/.env
+**/.DS_Store
+README.md

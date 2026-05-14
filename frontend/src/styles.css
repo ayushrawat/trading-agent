@@ -43,6 +43,29 @@ body {
   font-weight: 400;
 }
 
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.user-chip img { width: 20px; height: 20px; border-radius: 50%; }
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0 0 0 4px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .topbar button {
   background: var(--accent);
   color: white;
@@ -53,6 +76,34 @@ body {
   font-weight: 500;
 }
 .topbar button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.login-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 40px;
+  max-width: 380px;
+  text-align: center;
+}
+.login-card h1 { margin: 0 0 8px; font-size: 22px; }
+.login-card p { color: var(--muted); margin: 0 0 24px; }
+.google-btn {
+  display: inline-block;
+  background: var(--accent);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 500;
+}
+.google-btn:hover { opacity: 0.92; }
 
 .err {
   background: #3a1818;

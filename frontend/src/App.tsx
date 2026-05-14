@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchNews, fetchTrades, NewsItem, refreshNow, Trade } from "./api";
+import { fetchMe, fetchNews, fetchTrades, logout, Me, NewsItem, refreshNow, Trade } from "./api";
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -57,12 +57,35 @@ function TradeCard({ trade, news }: { trade: Trade; news: NewsItem[] }) {
   );
 }
 
+function LoginScreen() {
+  return (
+    <div className="login">
+      <div className="login-card">
+        <h1>Trading Agent</h1>
+        <p>Sign in with the Google account that's been added to the allowlist.</p>
+        <a className="google-btn" href="/auth/login">
+          Sign in with Google
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [me, setMe] = useState<Me | null>(null);
+  const [meLoading, setMeLoading] = useState(true);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchMe()
+      .then(setMe)
+      .catch(() => setMe(null))
+      .finally(() => setMeLoading(false));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,23 +95,31 @@ export default function App() {
       setTrades(t);
       setNews(n);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "unauthorized") {
+        // session may have expired — re-check /me
+        fetchMe().then(setMe).catch(() => setMe(null));
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const isAuthed = !me?.auth_required || me?.authenticated;
+
   useEffect(() => {
+    if (!isAuthed) return;
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, isAuthed]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
       await refreshNow();
-      // give the background tasks a few seconds, then reload
       setTimeout(load, 4000);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -97,13 +128,35 @@ export default function App() {
     }
   };
 
+  const onLogout = async () => {
+    await logout();
+    setMe({ ...(me as Me), authenticated: false, email: null, name: null, picture: null });
+  };
+
+  if (meLoading) {
+    return <div className="page"><div className="empty">Loading…</div></div>;
+  }
+
+  if (me?.auth_required && !me.authenticated) {
+    return <LoginScreen />;
+  }
+
   return (
     <div className="page">
       <header className="topbar">
         <h1>Trading Agent <span>· NIFTY 100 picks</span></h1>
-        <button onClick={onRefresh} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "Refresh now"}
-        </button>
+        <div className="topbar-actions">
+          {me?.authenticated && me.email && (
+            <div className="user-chip">
+              {me.picture && <img src={me.picture} alt="" />}
+              <span>{me.email}</span>
+              <button className="link-btn" onClick={onLogout}>Sign out</button>
+            </div>
+          )}
+          <button onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh now"}
+          </button>
+        </div>
       </header>
 
       {error && <div className="err">Error: {error}</div>}

@@ -119,13 +119,79 @@ Open `http://localhost:5173`. The Vite dev server proxies `/api/*` to the backen
 
 There's a **Refresh now** button in the top-right of the UI — it triggers all three agents on demand. Same as hitting `POST /api/refresh`.
 
-## Deploying it (so you can check from your phone)
+## Deploying to Fly.io with Google OAuth
 
-The whole thing is small enough to run on the free tier of [Railway](https://railway.app), [Fly.io](https://fly.io), or [Render](https://render.com). The simplest path:
+The repo has a `Dockerfile` and `fly.toml` already wired up. FastAPI serves the built React bundle, so it's one process behind one HTTPS URL. Access is gated by Google OAuth + a manually-curated email allowlist (no signup, no passwords on your side).
 
-1. Build the frontend (`cd frontend && npm run build`) and serve the resulting `dist/` either from FastAPI directly (add a `StaticFiles` mount) or from a static host like Vercel.
-2. Deploy the backend as a Python service, set the env vars from `.env.example`, and point the frontend at it.
-3. SQLite lives on the container's disk — fine for single-user, but make sure your host gives you a persistent volume if you don't want to lose data on redeploys.
+### 1. Google OAuth credentials
+
+1. Open https://console.cloud.google.com/apis/credentials.
+2. Click **"Create credentials" → "OAuth client ID"**. If prompted, set up the consent screen first (use **External** + **Testing** so you don't have to publish it — add your own email under "Test users").
+3. Application type: **Web application**.
+4. **Authorised redirect URIs**: add both
+   - `http://localhost:5173/auth/callback` (for local dev)
+   - `https://<your-fly-app>.fly.dev/auth/callback` (fill in after step 2 below)
+5. Copy the **Client ID** and **Client Secret** — you'll paste these as Fly secrets.
+
+### 2. Provision the Fly app
+
+```bash
+# install flyctl: https://fly.io/docs/flyctl/install/
+fly auth signup       # or `fly auth login` if you already have an account
+
+# from the repo root
+fly launch --no-deploy
+```
+
+`fly launch` reads `fly.toml`. When prompted:
+- App name: pick something unique (this becomes `https://<name>.fly.dev`)
+- Region: keep `bom` (Mumbai) — closest to NSE and the news feeds
+- Don't have it generate a new Dockerfile (we already have one)
+- Decline Postgres / Redis
+
+Create the persistent volume for SQLite (one-time):
+
+```bash
+fly volumes create trading_agent_data --size 1 --region bom
+```
+
+### 3. Set secrets
+
+Now go back to your Google OAuth client and add `https://<your-app>.fly.dev/auth/callback` as a redirect URI. Then:
+
+```bash
+# Generate a session secret
+SESSION_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+
+fly secrets set \
+    GOOGLE_CLIENT_ID="..." \
+    GOOGLE_CLIENT_SECRET="..." \
+    SESSION_SECRET="$SESSION_SECRET" \
+    ALLOWED_EMAILS_RAW="you@gmail.com,friend@gmail.com" \
+    LLM_API_KEY="AIza..."
+```
+
+`AUTH_ENABLED=true` is already in `fly.toml`, so the allowlist kicks in on first deploy.
+
+### 4. Deploy
+
+```bash
+fly deploy
+```
+
+Visit `https://<your-app>.fly.dev`. You'll see the **Sign in with Google** screen. Sign in with one of the allowlisted emails — you should land on the dashboard. Anyone outside the allowlist gets an "Access denied" page after they authenticate with Google.
+
+### Managing the allowlist later
+
+```bash
+# add or remove users
+fly secrets set ALLOWED_EMAILS_RAW="you@gmail.com,friend@gmail.com,new.person@example.com"
+
+# kick everyone out (rotates the session signing key)
+fly secrets set SESSION_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+```
+
+Removing a user from the allowlist takes effect on their next request — `require_user` re-checks the allowlist on every API call, not just at login.
 
 ## A note on what this is and isn't
 
