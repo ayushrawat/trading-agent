@@ -90,41 +90,61 @@ def _evaluate(symbol: str, df: pd.DataFrame) -> Optional[Candidate]:
     atr = _atr(df["high"], df["low"], close).iloc[-1]
     last_close = float(close.iloc[-1])
 
+    # Weighted vote across 4 indicators. Trend (SMA20 vs SMA50) gets the
+    # heaviest weight because it's the most structural signal.
+    long_w, short_w = 0, 0
     long_signals: list[str] = []
     short_signals: list[str] = []
 
     if pd.notna(rsi):
-        if rsi < 35:
-            long_signals.append(f"RSI oversold ({rsi:.1f})")
-        elif rsi > 65:
-            short_signals.append(f"RSI overbought ({rsi:.1f})")
+        if rsi < 45:
+            long_w += 1
+            long_signals.append(f"RSI tilt long ({rsi:.1f})")
+        elif rsi > 55:
+            short_w += 1
+            short_signals.append(f"RSI tilt short ({rsi:.1f})")
 
-    if pd.notna(macd_prev) and pd.notna(sig_prev):
-        if macd_prev < sig_prev and macd_now > sig_now:
-            long_signals.append("MACD bullish crossover")
-        elif macd_prev > sig_prev and macd_now < sig_now:
-            short_signals.append("MACD bearish crossover")
+    if pd.notna(macd_now) and pd.notna(sig_now):
+        bullish_cross = pd.notna(macd_prev) and pd.notna(sig_prev) and macd_prev <= sig_prev and macd_now > sig_now
+        bearish_cross = pd.notna(macd_prev) and pd.notna(sig_prev) and macd_prev >= sig_prev and macd_now < sig_now
+        if macd_now > sig_now:
+            long_w += 1
+            long_signals.append("MACD above signal (bullish crossover)" if bullish_cross else "MACD above signal")
+        elif macd_now < sig_now:
+            short_w += 1
+            short_signals.append("MACD below signal (bearish crossover)" if bearish_cross else "MACD below signal")
 
     if pd.notna(sma20) and pd.notna(sma50):
-        if sma20 > sma50 and last_close > sma20:
-            long_signals.append("Price above rising SMA20/50")
-        elif sma20 < sma50 and last_close < sma20:
-            short_signals.append("Price below falling SMA20/50")
+        if sma20 > sma50:
+            long_w += 2
+            long_signals.append("Uptrend (SMA20 above SMA50)")
+        elif sma20 < sma50:
+            short_w += 2
+            short_signals.append("Downtrend (SMA20 below SMA50)")
 
-    if not long_signals and not short_signals:
+    if pd.notna(sma20):
+        if last_close > sma20:
+            long_w += 1
+            long_signals.append("Price above SMA20")
+        elif last_close < sma20:
+            short_w += 1
+            short_signals.append("Price below SMA20")
+
+    if long_w == 0 and short_w == 0:
         return None
 
-    if len(long_signals) >= len(short_signals):
-        direction = "LONG"
-        signals = long_signals
+    if long_w > short_w:
+        direction, win_w, signals = "LONG", long_w, long_signals
+    elif short_w > long_w:
+        direction, win_w, signals = "SHORT", short_w, short_signals
     else:
-        direction = "SHORT"
-        signals = short_signals
+        return None  # genuine tie — sit on hands
 
-    if len(signals) < 1 or pd.isna(atr) or atr <= 0:
+    if pd.isna(atr) or atr <= 0:
         return None
 
-    confidence = min(1.0, len(signals) / 3.0)
+    # max possible weight per side = 1 (RSI) + 1 (MACD) + 2 (SMA trend) + 1 (price vs SMA20) = 5
+    confidence = round(win_w / 5.0, 2)
 
     if direction == "LONG":
         stop = last_close - 1.5 * atr
