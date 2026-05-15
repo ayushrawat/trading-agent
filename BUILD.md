@@ -41,6 +41,42 @@ Every cloud command, every code edit, every commit happened in pair with Claude 
 
 I made the **decisions** — universe size, indicator weights, allowlist policy, when to ship vs. wait, what "foolproof" honestly meant. The model executed, surfaced trade-offs I'd missed, and stopped me from pasting an OAuth secret into a Caddy config when we briefly thought we'd self-host.
 
+## The Prompts (What I Actually Asked For)
+
+The model did the typing, but the direction came from these. Lightly annotated, original phrasing kept.
+
+**The goal, no plan attached:**
+
+> ok - time to publish to somewhere from where i can share to some people i want to have access to - and it is up all the time
+
+**Scope-setting on the README:**
+
+> also modify the readme so that it only shows how it works but doesn't show how to run or deploy none of that - just explanation of what is done
+
+**Course-correction when the proposed plan (Fly.io) didn't feel right at first:**
+
+> no wait - fly.io is actually costly - do you have any other suggestions
+
+**Pushed back again after reading Fly's pricing page myself:**
+
+> so i went through the fly.io pricing plans and it is not what you're suggesting - it goes by the usage and the moment i start to do some processing - it's gonna charge me like hell
+
+**Decision, once the model laid out actual numbers for this workload (~$4/mo, flat):**
+
+> ok no - let's go fly io
+
+**Feature ask — included a request ("full proof") that needed calibration:**
+
+> i want to make sure this app also suggests BSE stocks - and also looks at past data for last year or so before making the suggestions - like full proof suggestions suggested by an LLM
+
+**Refined after the model pushed back on "foolproof" and unpacked what "BSE" really meant:**
+
+> c - like suggestions that might not be on popular radars; i understand about the foolproof - but to the best we can - like lets start with hit rates initially
+
+**Shipping discipline — validate one phase before doubling down:**
+
+> let's stay at phase 1 for now
+
 ## What I'd Do Differently
 
 - **Skip Oracle.** Saving $2–4/month doesn't compensate for an hour fighting fraud heuristics. Fly first.
