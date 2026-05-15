@@ -43,39 +43,43 @@ I made the **decisions** — universe size, indicator weights, allowlist policy,
 
 ## The Prompts (What I Actually Asked For)
 
-The model did the typing, but the direction came from these. Lightly annotated, original phrasing kept.
+The model did the typing, but the direction came from these. Just the prompts that defined a need or constraint — original phrasing kept. Spanning both sessions: the first built the app, the second shipped and extended it.
 
-**The goal, no plan attached:**
+### Day 1 — Building the app
+
+**The original vision, no scaffolding attached:**
+
+> i want to create an app which suggests trades for the day for sensex and nifty - it looks at public news articles, past data etc - and has a barebones UI which lists down all the trades - i would imagine that app running agents in the background which gets in all the data to make smart suggestions
+
+**The quality + cost constraint that shaped every downstream choice (Gemini for the LLM, Fly for hosting):**
+
+> want to make sure i don't compromise on quality but sure low or zero costs are preferred
+
+**Caught a feature gap on the first end-to-end run — the model had wired up news analysis without per-stock technicals:**
+
+> it is not suggesting specific stocks - are you hitting and analysing only the news - i wanted to analyse the past trends of specific stocks to make suggestions as well
+
+**The hosting + access requirement, deliberately stated:**
+
+> how do i host it on public with access provided only to certain usernames that i will configure manually
+
+### Day 2 — Shipping and extending
+
+**The publishing goal:**
 
 > ok - time to publish to somewhere from where i can share to some people i want to have access to - and it is up all the time
 
-**Scope-setting on the README:**
-
-> also modify the readme so that it only shows how it works but doesn't show how to run or deploy none of that - just explanation of what is done
-
-**Course-correction when the proposed plan (Fly.io) didn't feel right at first:**
-
-> no wait - fly.io is actually costly - do you have any other suggestions
-
-**Pushed back again after reading Fly's pricing page myself:**
+**Cost pushback on Fly, after looking at their pricing page myself:**
 
 > so i went through the fly.io pricing plans and it is not what you're suggesting - it goes by the usage and the moment i start to do some processing - it's gonna charge me like hell
 
-**Decision, once the model laid out actual numbers for this workload (~$4/mo, flat):**
-
-> ok no - let's go fly io
-
-**Feature ask — included a request ("full proof") that needed calibration:**
+**Feature expansion ask — included a request ("full proof") that needed calibration:**
 
 > i want to make sure this app also suggests BSE stocks - and also looks at past data for last year or so before making the suggestions - like full proof suggestions suggested by an LLM
 
-**Refined after the model pushed back on "foolproof" and unpacked what "BSE" really meant:**
+**Refined after the model pushed back on "foolproof" and unpacked what "BSE" actually meant in practice:**
 
 > c - like suggestions that might not be on popular radars; i understand about the foolproof - but to the best we can - like lets start with hit rates initially
-
-**Shipping discipline — validate one phase before doubling down:**
-
-> let's stay at phase 1 for now
 
 ## What I'd Do Differently
 
