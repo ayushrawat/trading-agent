@@ -34,7 +34,7 @@ def _fetch_one(yf_ticker: str, period: str, interval: str):
         return None
 
 
-def run_market_agent(period: str = "6mo", interval: str = "1d") -> int:
+def run_market_agent(period: str = "1y", interval: str = "1d") -> int:
     """Fetch OHLCV for indices + the full NIFTY 100 universe."""
     inserted = 0
     empty: list[str] = []

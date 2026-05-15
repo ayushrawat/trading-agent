@@ -12,6 +12,8 @@ export interface Trade {
   rationale: string;
   signals: string[];
   news_refs: number[];
+  hit_rate: number | null;
+  hit_rate_sample: number | null;
 }
 
 export interface NewsItem {

@@ -34,6 +34,8 @@ class TradeOut(BaseModel):
     rationale: str
     signals: list[str]
     news_refs: list[int]
+    hit_rate: float | None
+    hit_rate_sample: int | None
 
 
 @router.get("/trades", response_model=list[TradeOut])
@@ -68,6 +70,8 @@ def list_trades(limit: int = 20):
             rationale=r.rationale or "",
             signals=json.loads(r.signals_json or "[]"),
             news_refs=json.loads(r.news_refs_json or "[]"),
+            hit_rate=r.hit_rate,
+            hit_rate_sample=r.hit_rate_sample,
         )
         for r in rows
     ]

@@ -30,6 +30,17 @@ function TradeCard({ trade, news }: { trade: Trade; news: NewsItem[] }) {
         <div><span>Entry</span><b>{trade.entry ?? "—"}</b></div>
         <div><span>Stop</span><b>{trade.stop ?? "—"}</b></div>
         <div><span>Target</span><b>{trade.target ?? "—"}</b></div>
+        <div title="Past-year hit rate of this rule combo on this stock">
+          <span>Hit rate</span>
+          <b>
+            {trade.hit_rate != null
+              ? `${Math.round(trade.hit_rate * 100)}%`
+              : "—"}
+          </b>
+          {trade.hit_rate_sample != null && trade.hit_rate_sample > 0 && (
+            <em>n={trade.hit_rate_sample}</em>
+          )}
+        </div>
       </div>
       <p className="rationale">{trade.rationale}</p>
       {trade.signals.length > 0 && (

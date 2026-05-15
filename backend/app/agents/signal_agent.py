@@ -25,6 +25,20 @@ class Candidate:
     signals: list[str]
     last_close: float
     indicators: dict
+    # Backtest: hit rate of this rule combo in this direction on this stock
+    # over the past ~12 months. None when insufficient history.
+    hit_rate: Optional[float] = None
+    hit_rate_sample: int = 0
+
+
+@dataclass
+class _Indicators:
+    rsi: pd.Series
+    macd: pd.Series
+    macd_signal: pd.Series
+    sma20: pd.Series
+    sma50: pd.Series
+    atr: pd.Series
 
 
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
@@ -54,6 +68,19 @@ def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) ->
     return tr.rolling(period).mean()
 
 
+def _compute_indicators(df: pd.DataFrame) -> _Indicators:
+    close = df["close"]
+    macd_line, signal_line, _hist = _macd(close)
+    return _Indicators(
+        rsi=_rsi(close),
+        macd=macd_line,
+        macd_signal=signal_line,
+        sma20=close.rolling(20).mean(),
+        sma50=close.rolling(50).mean(),
+        atr=_atr(df["high"], df["low"], close),
+    )
+
+
 def _load_bars(symbol: str) -> pd.DataFrame:
     with SessionLocal() as db:
         rows = (
@@ -78,22 +105,27 @@ def _load_bars(symbol: str) -> pd.DataFrame:
     return df
 
 
-def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
-    if len(df) < 60:
-        return None
+def _vote_at(close: pd.Series, ind: _Indicators, i: int) -> tuple[Optional[str], list[str], int, float, Optional[float]]:
+    """Run the weighted vote using indicator values at row index i.
+    Returns (direction, signals, winning_weight, last_close, atr).
+    direction is None on no-signal / tie.
+    """
+    n = len(close)
+    if i < 0:
+        i = n + i
+    if i <= 0 or i >= n:
+        return None, [], 0, float(close.iloc[-1]) if n else 0.0, None
 
-    close = df["close"]
-    rsi = _rsi(close).iloc[-1]
-    macd, signal, hist = _macd(close)
-    macd_now, macd_prev = macd.iloc[-1], macd.iloc[-2]
-    sig_now, sig_prev = signal.iloc[-1], signal.iloc[-2]
-    sma20 = close.rolling(20).mean().iloc[-1]
-    sma50 = close.rolling(50).mean().iloc[-1]
-    atr = _atr(df["high"], df["low"], close).iloc[-1]
-    last_close = float(close.iloc[-1])
+    rsi = ind.rsi.iloc[i]
+    macd_now = ind.macd.iloc[i]
+    macd_prev = ind.macd.iloc[i - 1] if i >= 1 else pd.NA
+    sig_now = ind.macd_signal.iloc[i]
+    sig_prev = ind.macd_signal.iloc[i - 1] if i >= 1 else pd.NA
+    sma20 = ind.sma20.iloc[i]
+    sma50 = ind.sma50.iloc[i]
+    atr = ind.atr.iloc[i]
+    last_close = float(close.iloc[i])
 
-    # Weighted vote across 4 indicators. Trend (SMA20 vs SMA50) gets the
-    # heaviest weight because it's the most structural signal.
     long_w, short_w = 0, 0
     long_signals: list[str] = []
     short_signals: list[str] = []
@@ -132,17 +164,90 @@ def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
             short_w += 1
             short_signals.append("Price below SMA20")
 
-    if long_w == 0 and short_w == 0:
+    atr_val = float(atr) if pd.notna(atr) else None
+
+    if long_w == short_w:  # covers 0/0 and any equal-weight tie
+        return None, [], 0, last_close, atr_val
+    if long_w > short_w:
+        return "LONG", long_signals, long_w, last_close, atr_val
+    return "SHORT", short_signals, short_w, last_close, atr_val
+
+
+def _backtest_hit_rate(
+    df: pd.DataFrame,
+    ind: _Indicators,
+    current_direction: str,
+    lookforward: int = 5,
+) -> tuple[Optional[float], int]:
+    """Replay the rule engine on every historical day in df. For each day a
+    signal fires matching `current_direction`, simulate the trade forward
+    `lookforward` bars. Pessimistic on same-bar collisions (stop wins).
+    Unresolved signals (neither hit) are excluded from the sample.
+    Returns (hit_rate, sample_size). hit_rate is None when sample is 0.
+    """
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    n = len(df)
+    start = 60  # need indicators warmed up
+    end = n - lookforward
+    if end <= start:
+        return None, 0
+
+    wins = 0
+    resolved = 0
+    for i in range(start, end):
+        direction, _sigs, _w, last_close, atr = _vote_at(close, ind, i)
+        if direction != current_direction or atr is None or atr <= 0:
+            continue
+
+        if direction == "LONG":
+            stop = last_close - 1.5 * atr
+            target = last_close + 2.5 * atr
+        else:
+            stop = last_close + 1.5 * atr
+            target = last_close - 2.5 * atr
+
+        outcome: Optional[str] = None
+        for j in range(i + 1, i + 1 + lookforward):
+            bar_high = high.iloc[j]
+            bar_low = low.iloc[j]
+            if pd.isna(bar_high) or pd.isna(bar_low):
+                continue
+            if direction == "LONG":
+                if bar_low <= stop:  # pessimistic: stop checked first
+                    outcome = "loss"
+                    break
+                if bar_high >= target:
+                    outcome = "win"
+                    break
+            else:  # SHORT
+                if bar_high >= stop:
+                    outcome = "loss"
+                    break
+                if bar_low <= target:
+                    outcome = "win"
+                    break
+
+        if outcome is None:
+            continue  # neither hit in the window — exclude from sample
+        resolved += 1
+        if outcome == "win":
+            wins += 1
+
+    if resolved == 0:
+        return None, 0
+    return round(wins / resolved, 3), resolved
+
+
+def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
+    if len(df) < 60:
         return None
 
-    if long_w > short_w:
-        direction, win_w, signals = "LONG", long_w, long_signals
-    elif short_w > long_w:
-        direction, win_w, signals = "SHORT", short_w, short_signals
-    else:
-        return None  # genuine tie — sit on hands
-
-    if pd.isna(atr) or atr <= 0:
+    ind = _compute_indicators(df)
+    close = df["close"]
+    direction, signals, win_w, last_close, atr = _vote_at(close, ind, len(df) - 1)
+    if direction is None or atr is None or atr <= 0:
         return None
 
     # max possible weight per side = 1 (RSI) + 1 (MACD) + 2 (SMA trend) + 1 (price vs SMA20) = 5
@@ -155,6 +260,8 @@ def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
         stop = last_close + 1.5 * atr
         target = last_close - 2.5 * atr
 
+    hit_rate, hit_rate_sample = _backtest_hit_rate(df, ind, direction, lookforward=5)
+
     return Candidate(
         symbol=symbol,
         name=name,
@@ -162,17 +269,19 @@ def _evaluate(symbol: str, name: str, df: pd.DataFrame) -> Optional[Candidate]:
         entry=round(last_close, 2),
         stop=round(stop, 2),
         target=round(target, 2),
-        confidence=round(confidence, 2),
+        confidence=confidence,
         signals=signals,
         last_close=last_close,
         indicators={
-            "rsi": None if pd.isna(rsi) else round(float(rsi), 2),
-            "macd": None if pd.isna(macd_now) else round(float(macd_now), 3),
-            "macd_signal": None if pd.isna(sig_now) else round(float(sig_now), 3),
-            "sma20": None if pd.isna(sma20) else round(float(sma20), 2),
-            "sma50": None if pd.isna(sma50) else round(float(sma50), 2),
+            "rsi": None if pd.isna(ind.rsi.iloc[-1]) else round(float(ind.rsi.iloc[-1]), 2),
+            "macd": None if pd.isna(ind.macd.iloc[-1]) else round(float(ind.macd.iloc[-1]), 3),
+            "macd_signal": None if pd.isna(ind.macd_signal.iloc[-1]) else round(float(ind.macd_signal.iloc[-1]), 3),
+            "sma20": None if pd.isna(ind.sma20.iloc[-1]) else round(float(ind.sma20.iloc[-1]), 2),
+            "sma50": None if pd.isna(ind.sma50.iloc[-1]) else round(float(ind.sma50.iloc[-1]), 2),
             "atr": round(float(atr), 2),
         },
+        hit_rate=hit_rate,
+        hit_rate_sample=hit_rate_sample,
     )
 
 

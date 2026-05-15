@@ -55,6 +55,10 @@ class TradeSuggestion(Base):
     rationale = Column(Text, default="")
     signals_json = Column(Text, default="")  # rule signals that fired
     news_refs_json = Column(Text, default="")  # article ids referenced
+    # Historical hit rate of this rule combo in this direction on this stock.
+    # Null when insufficient history (e.g. newly listed or too few past signals).
+    hit_rate = Column(Float, nullable=True)
+    hit_rate_sample = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_trade_created", "created_at"),
