@@ -6,10 +6,12 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from ..agents.live_quotes_agent import get_cached_quote
+from ..agents.live_quotes_agent import _is_market_open, get_cached_quote
 from ..db import SessionLocal
 from ..models import MarketBar
 from ..universe import NIFTY_100
+from ..upstox import auth as upstox_auth
+from ..upstox import ws_agent as upstox_ws
 
 router = APIRouter()
 
@@ -25,9 +27,47 @@ class Quote(BaseModel):
     change_pct: float | None
 
 
+class LiveStatus(BaseModel):
+    # 'upstox' = real-time WS feed live; 'yfinance' = ~15 min delayed fallback;
+    # 'stale' = no fresh data from any source (market closed or fetch failures).
+    source: str
+    upstox_configured: bool
+    upstox_connected: bool
+    upstox_token_valid: bool
+    market_open: bool
+    login_url: str | None
+
+
 class QuotesOut(BaseModel):
     indices: list[Quote]
     stocks: list[Quote]
+    live: LiveStatus
+
+
+def _live_status() -> LiveStatus:
+    configured = upstox_auth.is_configured()
+    token = upstox_auth.token_status()
+    ws = upstox_ws.status()
+    token_valid = bool(token.get("present") and not token.get("expired"))
+    connected = bool(ws.get("connected"))
+    market_open = _is_market_open()
+
+    if connected and token_valid:
+        source = "upstox"
+    elif market_open:
+        source = "yfinance"
+    else:
+        source = "stale"
+
+    login_url = "/upstox/login" if configured and not connected else None
+    return LiveStatus(
+        source=source,
+        upstox_configured=configured,
+        upstox_connected=connected,
+        upstox_token_valid=token_valid,
+        market_open=market_open,
+        login_url=login_url,
+    )
 
 
 def _daily_anchor(db, symbol: str) -> tuple[float | None, float | None]:
@@ -97,4 +137,4 @@ def list_quotes():
             live = get_cached_quote(ticker)
             last = live if live is not None else daily_last
             stocks.append(_quote(ticker, name, last, prev))
-    return QuotesOut(indices=indices, stocks=stocks)
+    return QuotesOut(indices=indices, stocks=stocks, live=_live_status())

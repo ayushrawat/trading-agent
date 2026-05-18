@@ -142,6 +142,42 @@ body {
   to   { transform: translate3d(-50%, 0, 0); }
 }
 
+/* --- Live status banner (Upstox refresh nudge) --- */
+.live-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(243, 156, 18, 0.10);
+  border-bottom: 1px solid rgba(243, 156, 18, 0.30);
+  color: #f6c668;
+  font-size: 12.5px;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f39c12;
+  box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.7);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(243, 156, 18, 0);  }
+  100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0);    }
+}
+.live-msg { flex: 1; min-width: 0; }
+.live-cta {
+  color: var(--text);
+  background: rgba(243, 156, 18, 0.20);
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.live-cta:hover { background: rgba(243, 156, 18, 0.32); }
+
 /* --- Indices summary --- */
 .indices {
   display: grid;

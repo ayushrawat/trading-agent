@@ -4,6 +4,7 @@ import {
   fetchNews,
   fetchQuotes,
   fetchTrades,
+  LiveStatus,
   logout,
   Me,
   NewsItem,
@@ -103,6 +104,29 @@ function ChangeBlock({ change, pct }: { change: number | null; pct: number | nul
   );
 }
 
+function LiveStatusBanner({ live }: { live: LiveStatus }) {
+  // Only nag if Upstox is set up AND we're falling back. If Upstox isn't
+  // configured at all, the yfinance-delayed feed is by design.
+  if (!live.upstox_configured) return null;
+  if (live.source === "upstox") return null;
+
+  const tokenIssue = !live.upstox_token_valid;
+  const msg = tokenIssue
+    ? "Upstox token expired — live feed is ~15 min delayed (yfinance fallback)."
+    : "Connecting to Upstox… live feed is ~15 min delayed (yfinance fallback).";
+  const cta = tokenIssue ? "Refresh token" : "Reconnect";
+
+  return (
+    <div className="live-banner">
+      <span className="live-dot" aria-hidden="true" />
+      <span className="live-msg">{msg}</span>
+      {live.login_url && (
+        <a className="live-cta" href={live.login_url}>{cta} →</a>
+      )}
+    </div>
+  );
+}
+
 function IndicesPanel({ indices }: { indices: Quote[] }) {
   if (indices.length === 0) return null;
   return (
@@ -173,7 +197,18 @@ export default function App() {
   const [meLoading, setMeLoading] = useState(true);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [quotes, setQuotes] = useState<Quotes>({ indices: [], stocks: [] });
+  const [quotes, setQuotes] = useState<Quotes>({
+    indices: [],
+    stocks: [],
+    live: {
+      source: "stale",
+      upstox_configured: false,
+      upstox_connected: false,
+      upstox_token_valid: false,
+      market_open: false,
+      login_url: null,
+    },
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +278,7 @@ export default function App() {
   return (
     <>
       <TickerBar stocks={quotes.stocks} />
+      <LiveStatusBanner live={quotes.live} />
       <div className="page">
         <header className="topbar">
           <h1>Trading Agent <span>· NIFTY 100 picks</span></h1>

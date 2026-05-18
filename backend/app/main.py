@@ -20,7 +20,9 @@ from .db import init_db
 from .routes.news import router as news_router
 from .routes.quotes import router as quotes_router
 from .routes.trades import router as trades_router
+from .routes.upstox import router as upstox_router
 from .scheduler import build_scheduler
+from .upstox import ws_agent as upstox_ws
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,10 +46,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             log.exception("initial boot pass failed")
     threading.Thread(target=_boot, daemon=True).start()
+    upstox_ws.start()
     log.info("trading-agent: scheduler started (auth_enabled=%s)", settings.auth_enabled)
     try:
         yield
     finally:
+        upstox_ws.stop()
         sched.shutdown(wait=False)
 
 
@@ -81,6 +85,11 @@ _auth_deps = [Depends(require_user)] if settings.auth_enabled else []
 app.include_router(trades_router, prefix="/api", tags=["trades"], dependencies=_auth_deps)
 app.include_router(news_router, prefix="/api", tags=["news"], dependencies=_auth_deps)
 app.include_router(quotes_router, prefix="/api", tags=["quotes"], dependencies=_auth_deps)
+# Upstox routes deliberately not behind require_user: the OAuth callback comes
+# in from upstox.com with no session cookie, and calendar apps can't carry
+# cookies when polling /upstox/refresh.ics. CSRF protection lives in the
+# state parameter stored in SessionMiddleware.
+app.include_router(upstox_router, tags=["upstox"])
 
 
 @app.get("/api/health")

@@ -40,6 +40,22 @@ class MarketBar(Base):
     )
 
 
+class UpstoxToken(Base):
+    """Single-row store for the current Upstox access token.
+
+    Upstox tokens expire at 3:30 AM IST regardless of issue time, so the
+    refresh cadence is daily. We persist just enough to reconnect the WS on
+    process restart without making the user re-OAuth.
+    """
+
+    __tablename__ = "upstox_tokens"
+
+    id = Column(Integer, primary_key=True)  # always 1 — we upsert
+    access_token = Column(String(2048), nullable=False)
+    obtained_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
 class TradeSuggestion(Base):
     __tablename__ = "trade_suggestions"
 
