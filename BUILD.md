@@ -81,6 +81,16 @@ The model did the typing, but the direction came from these. Just the prompts th
 
 > c - like suggestions that might not be on popular radars; i understand about the foolproof - but to the best we can - like lets start with hit rates initially
 
+### Day 3 — Live market context
+
+Two small UI asks after using the app for a few days: *"I want to see Sensex/Nifty up/down at a glance, and a scrollable strip of every stock with today's change."* Routine on every trading dashboard, missing here.
+
+> can we have a box somewhere on the screen that displays the total bse sensex and nifty points - and how much it is up and down? second point is - can we have a floating bar somewhere on the screen, preferrably on top, which is scrollable but lists down all the stocks that are in bse or nifty and their today's score like how much it is up and down
+
+The scope clarification was the load-bearing bit. *"All stocks in BSE or Nifty"* sounds simple but BSE has ~5,000 listed names — useless in a ticker. Pinned it to **Sensex 30 + Nifty 50 constituents** (~70 unique, already covered by our NIFTY 100 universe), which is what every financial site actually means by this. The model proposed an auto-scrolling marquee with hover-to-pause over a manually-scrollable bar — felt more alive, and that's what shipped.
+
+A new `GET /api/quotes` reads the last two daily bars per symbol from the same `market_bars` table the suggestion engine already uses — no extra fetch path, no duplicate data, the ticker and the trade cards stay consistent by construction.
+
 ## What I'd Do Differently
 
 - **Skip Oracle.** Saving $2–4/month doesn't compensate for an hour fighting fraud heuristics. Fly first.

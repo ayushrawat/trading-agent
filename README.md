@@ -18,6 +18,8 @@ Three things happen on a loop, in the background:
 
 The dashboard itself is intentionally barebones — a single page listing the day's top suggestions as cards with the ticker + company name, direction (LONG/SHORT), entry/stop/target, a confidence percentage, the rationale, the technical signals that fired, and links to the news articles that drove the call.
 
+Above the cards, the page also gives you the **live market context at a glance**: a sticky **auto-scrolling ticker bar** at the very top cycling through every NIFTY 100 stock with its last close and today's % change (green up / red down, hover to pause), and a pair of **index summary cards** for **BSE Sensex** and **Nifty 50** showing the current value and how much they're up or down on the day. Same data the suggestions are built on — surfaced so you don't have to flip to another tab.
+
 ## How we built it (in plain language)
 
 Think of the architecture as a four-stage assembly line:
@@ -61,7 +63,8 @@ trading-agent/
 │   │   │   └── llm_agent.py      Calls the LLM to rank + explain top picks
 │   │   └── routes/
 │   │       ├── trades.py      GET /api/trades, POST /api/refresh
-│   │       └── news.py        GET /api/news
+│   │       ├── news.py        GET /api/news
+│   │       └── quotes.py      GET /api/quotes (indices + ticker bar data)
 │   ├── requirements.txt
 │   └── .env.example
 └── frontend/

@@ -17,6 +17,7 @@ from .auth import require_user, router as auth_router
 from .config import settings
 from .db import init_db
 from .routes.news import router as news_router
+from .routes.quotes import router as quotes_router
 from .routes.trades import router as trades_router
 from .scheduler import build_scheduler
 
@@ -77,6 +78,7 @@ app.include_router(auth_router, tags=["auth"])
 _auth_deps = [Depends(require_user)] if settings.auth_enabled else []
 app.include_router(trades_router, prefix="/api", tags=["trades"], dependencies=_auth_deps)
 app.include_router(news_router, prefix="/api", tags=["news"], dependencies=_auth_deps)
+app.include_router(quotes_router, prefix="/api", tags=["quotes"], dependencies=_auth_deps)
 
 
 @app.get("/api/health")

@@ -57,6 +57,27 @@ export async function fetchNews(): Promise<NewsItem[]> {
   return r.json();
 }
 
+export interface Quote {
+  symbol: string;
+  name: string;
+  last: number | null;
+  prev: number | null;
+  change: number | null;
+  change_pct: number | null;
+}
+
+export interface Quotes {
+  indices: Quote[];
+  stocks: Quote[];
+}
+
+export async function fetchQuotes(): Promise<Quotes> {
+  const r = await fetch(`${BASE}/api/quotes`, { credentials: "include" });
+  if (r.status === 401) throw new Error("unauthorized");
+  if (!r.ok) throw new Error(`quotes ${r.status}`);
+  return r.json();
+}
+
 export async function refreshNow(): Promise<void> {
   const r = await fetch(`${BASE}/api/refresh`, { method: "POST", credentials: "include" });
   if (!r.ok) throw new Error(`refresh ${r.status}`);

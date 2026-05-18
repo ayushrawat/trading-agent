@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
-import { fetchMe, fetchNews, fetchTrades, logout, Me, NewsItem, refreshNow, Trade } from "./api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  fetchMe,
+  fetchNews,
+  fetchQuotes,
+  fetchTrades,
+  logout,
+  Me,
+  NewsItem,
+  Quote,
+  Quotes,
+  refreshNow,
+  Trade,
+} from "./api";
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -68,6 +80,80 @@ function TradeCard({ trade, news }: { trade: Trade; news: NewsItem[] }) {
   );
 }
 
+function fmtNum(n: number | null, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function ChangeBlock({ change, pct }: { change: number | null; pct: number | null }) {
+  if (change == null || pct == null) {
+    return <span className="chg chg-flat">—</span>;
+  }
+  const up = change >= 0;
+  const sign = up ? "+" : "";
+  return (
+    <span className={`chg ${up ? "chg-up" : "chg-down"}`}>
+      {sign}
+      {fmtNum(change)} ({sign}
+      {fmtNum(pct)}%)
+    </span>
+  );
+}
+
+function IndicesPanel({ indices }: { indices: Quote[] }) {
+  if (indices.length === 0) return null;
+  return (
+    <div className="indices">
+      {indices.map((q) => (
+        <div key={q.symbol} className="index-card">
+          <div className="index-name">{q.name}</div>
+          <div className="index-last">{fmtNum(q.last)}</div>
+          <ChangeBlock change={q.change} pct={q.change_pct} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TickerBar({ stocks }: { stocks: Quote[] }) {
+  // Only show stocks we actually have a quote for. Duplicate the list so the
+  // marquee loops seamlessly when translated -50%.
+  const shown = useMemo(
+    () => stocks.filter((s) => s.change_pct != null),
+    [stocks],
+  );
+  if (shown.length === 0) return null;
+
+  const renderItem = (q: Quote, i: number) => {
+    const pct = q.change_pct!;
+    const up = pct >= 0;
+    return (
+      <span key={`${q.symbol}-${i}`} className="tk-item">
+        <span className="tk-sym">{q.symbol}</span>
+        <span className="tk-last">{fmtNum(q.last)}</span>
+        <span className={`tk-pct ${up ? "chg-up" : "chg-down"}`}>
+          {up ? "+" : ""}
+          {fmtNum(pct)}%
+        </span>
+      </span>
+    );
+  };
+
+  return (
+    <div className="ticker">
+      <div className="ticker-track">
+        <div className="ticker-row">{shown.map(renderItem)}</div>
+        <div className="ticker-row" aria-hidden="true">
+          {shown.map((q, i) => renderItem(q, i + shown.length))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen() {
   return (
     <div className="login">
@@ -87,6 +173,7 @@ export default function App() {
   const [meLoading, setMeLoading] = useState(true);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [quotes, setQuotes] = useState<Quotes>({ indices: [], stocks: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +189,10 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const [t, n] = await Promise.all([fetchTrades(), fetchNews()]);
+      const [t, n, q] = await Promise.all([fetchTrades(), fetchNews(), fetchQuotes()]);
       setTrades(t);
       setNews(n);
+      setQuotes(q);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === "unauthorized") {
@@ -153,54 +241,59 @@ export default function App() {
   }
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <h1>Trading Agent <span>· NIFTY 100 picks</span></h1>
-        <div className="topbar-actions">
-          {me?.authenticated && me.email && (
-            <div className="user-chip">
-              {me.picture && <img src={me.picture} alt="" />}
-              <span>{me.email}</span>
-              <button className="link-btn" onClick={onLogout}>Sign out</button>
-            </div>
-          )}
-          <button onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh now"}
-          </button>
-        </div>
-      </header>
+    <>
+      <TickerBar stocks={quotes.stocks} />
+      <div className="page">
+        <header className="topbar">
+          <h1>Trading Agent <span>· NIFTY 100 picks</span></h1>
+          <div className="topbar-actions">
+            {me?.authenticated && me.email && (
+              <div className="user-chip">
+                {me.picture && <img src={me.picture} alt="" />}
+                <span>{me.email}</span>
+                <button className="link-btn" onClick={onLogout}>Sign out</button>
+              </div>
+            )}
+            <button onClick={onRefresh} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh now"}
+            </button>
+          </div>
+        </header>
 
-      {error && <div className="err">Error: {error}</div>}
+        <IndicesPanel indices={quotes.indices} />
 
-      {loading && trades.length === 0 ? (
-        <div className="empty">Loading suggestions…</div>
-      ) : trades.length === 0 ? (
-        <div className="empty">
-          No suggestions yet. The agents may still be warming up — try refresh in a minute.
-        </div>
-      ) : (
-        <div className="grid">
-          {trades.map((t) => (
-            <TradeCard key={t.id} trade={t} news={news} />
-          ))}
-        </div>
-      )}
+        {error && <div className="err">Error: {error}</div>}
 
-      <section className="news-section">
-        <h2>Recent news</h2>
-        {news.length === 0 ? (
-          <div className="empty">No news fetched yet.</div>
+        {loading && trades.length === 0 ? (
+          <div className="empty">Loading suggestions…</div>
+        ) : trades.length === 0 ? (
+          <div className="empty">
+            No suggestions yet. The agents may still be warming up — try refresh in a minute.
+          </div>
         ) : (
-          <ul className="news-list">
-            {news.slice(0, 20).map((n) => (
-              <li key={n.id}>
-                <a href={n.url} target="_blank" rel="noreferrer">{n.title}</a>
-                <span className="news-meta"> — {n.source} · {fmtTime(n.published_at)}</span>
-              </li>
+          <div className="grid">
+            {trades.map((t) => (
+              <TradeCard key={t.id} trade={t} news={news} />
             ))}
-          </ul>
+          </div>
         )}
-      </section>
-    </div>
+
+        <section className="news-section">
+          <h2>Recent news</h2>
+          {news.length === 0 ? (
+            <div className="empty">No news fetched yet.</div>
+          ) : (
+            <ul className="news-list">
+              {news.slice(0, 20).map((n) => (
+                <li key={n.id}>
+                  <a href={n.url} target="_blank" rel="noreferrer">{n.title}</a>
+                  <span className="news-meta"> — {n.source} · {fmtTime(n.published_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </>
   );
 }
