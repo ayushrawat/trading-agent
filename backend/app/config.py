@@ -23,15 +23,6 @@ class Settings(BaseSettings):
     market_open_hhmm: str = "0915"
     market_close_hhmm: str = "1530"
 
-    # --- Upstox live feed (V3 market-data WS) ---
-    # When upstox_api_key is blank, the integration is a no-op and the app
-    # silently falls back to the yfinance ~15-min-delayed live agent.
-    upstox_api_key: str = ""
-    upstox_api_secret: str = ""
-    upstox_redirect_uri: str = ""
-    # Daily reminder time (IST) embedded in the .ics calendar feed.
-    upstox_reminder_hhmm: str = "0800"
-
     # --- Auth (Google OAuth + email allowlist) ---
     # When auth_enabled is False, all routes are open (handy for local dev).
     auth_enabled: bool = False

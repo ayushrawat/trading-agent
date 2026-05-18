@@ -66,19 +66,9 @@ export interface Quote {
   change_pct: number | null;
 }
 
-export interface LiveStatus {
-  source: "upstox" | "yfinance" | "stale";
-  upstox_configured: boolean;
-  upstox_connected: boolean;
-  upstox_token_valid: boolean;
-  market_open: boolean;
-  login_url: string | null;
-}
-
 export interface Quotes {
   indices: Quote[];
   stocks: Quote[];
-  live: LiveStatus;
 }
 
 export async function fetchQuotes(): Promise<Quotes> {
