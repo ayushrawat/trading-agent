@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from .agents.live_quotes_agent import run_live_quotes_agent
 from .agents.llm_agent import run_llm_agent
 from .agents.market_agent import run_market_agent
 from .agents.news_agent import run_news_agent
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
         try:
             run_news_agent()
             run_market_agent()
+            run_live_quotes_agent()
             run_llm_agent()
         except Exception:
             log.exception("initial boot pass failed")

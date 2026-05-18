@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     news_interval_min: int = 30
     market_interval_min: int = 15
     signal_interval_min: int = 60
+    live_quotes_interval_min: int = 5
 
     market_open_hhmm: str = "0915"
     market_close_hhmm: str = "1530"
