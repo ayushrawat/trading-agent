@@ -91,7 +91,29 @@ The scope clarification was the load-bearing bit. *"All stocks in BSE or Nifty"*
 
 A new `GET /api/quotes` reads the last two daily bars per symbol from the same `market_bars` table the suggestion engine already uses — no extra fetch path, no duplicate data, the ticker and the trade cards stay consistent by construction.
 
+### Day 4 — Shutting it down
+
+A few days of looking at the dashboard, asking it for picks, and watching the agents do their thing — and then the obvious question: *am I actually going to act on these?* For a personal tool I built mostly to see if it could be built, the honest answer was no. A live ~$5/month bill for something I check out of curiosity isn't free, even if it's small.
+
+Tried to upgrade the live feed from yfinance's 15-min delay to real-time via Upstox first. Got as far as the developer-portal sign-up — Upstox wanted PAN, Aadhaar, bank linkage, the full KYC stack — for what is, again, a personal toy. Bailed.
+
+> forget it - let it stay on the 15 min delay that we are already on - its too much hassle and upstox is asking for a lot of PII which i don't want to give
+
+Reverted the ~700-line Upstox scaffold (it was cleanly isolated behind feature flags, so the revert was a single `git revert`), and decided to wind the deployment down entirely.
+
+Two real options to "turn it off" on Fly:
+
+| Option | What it does | Recoverable? | Monthly cost |
+|---|---|---|---|
+| Scale to 0 machines | Destroys the running VM, keeps app + 1 GB volume + secrets | Yes — one `fly scale count 1` away | Plan minimum (~$5) still applies |
+| Destroy the app | Wipes everything: VM, volume, secrets, hostname | Code is in git; the SQLite history is gone | $0 |
+
+Picked **destroy**. The data being lost wasn't precious (10 days of RSS headlines and OHLCV bars yfinance will gladly re-serve), and "scale to 0 but still pay $5/mo" felt worse than honest zero. `fly apps destroy trading-agent-atyourdisposal` — one command, done.
+
+The repo stays. Resurrection takes ~30 minutes when I want it back — see [README → Resurrecting](README.md#resurrecting).
+
 ## What I'd Do Differently
 
 - **Skip Oracle.** Saving $2–4/month doesn't compensate for an hour fighting fraud heuristics. Fly first.
 - **Sign up for Fly *before* a deadline.** The high-risk review queue is fine when you're not in a hurry.
+- **Build the off-switch with the on-switch.** Knowing upfront that "tear it down cleanly" was as easy as "deploy it" would have made it a less weighty decision to shut down. Two paragraphs in the README under "Resurrecting" cost less than one wrong call to `fly apps destroy`.

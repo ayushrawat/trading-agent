@@ -1,5 +1,7 @@
 # Trading Agent
 
+> **Status: shut down (May 2026).** The public deployment at `trading-agent-atyourdisposal.fly.dev` was destroyed to stop the ~$5/month Fly bill. The code below is intact and re-deployable in ~30 minutes — see [Resurrecting](#resurrecting) at the bottom.
+
 A small personal app that suggests **day trades across NIFTY 100 stocks** by reading the news, looking at each stock's recent price action, and combining the two into a short, opinionated call: "go long here, stop here, target here, and here's why."
 
 It runs a few small background workers ("agents") that quietly collect data while you do other things, and a barebones dashboard you can pull up on your phone or laptop to see today's top picks.
@@ -81,3 +83,14 @@ trading-agent/
 It's a thinking tool. It surfaces ideas that pass two filters — "the chart looks like X" and "the news supports X" — and writes them down for you. It doesn't place orders. It doesn't know your risk appetite. It doesn't replace doing your own homework.
 
 The rule engine is intentionally simple (RSI/MACD/MAs are decades-old textbook stuff) and the LLM is just there to be the news-aware sanity check. If you find yourself trusting it blindly, that's a bug — make the rationale field force you to read the *why* before acting.
+
+## Resurrecting
+
+The Fly app and its 1 GB volume were destroyed in May 2026, so the accumulated SQLite history (news, market_bars, trade_suggestions) is gone. The code, `fly.toml`, `Dockerfile`, and Google OAuth client all still exist — bringing it back is mostly typing.
+
+1. `fly launch --no-deploy --copy-config` from the repo root. Pick a new app name (the old `trading-agent-atyourdisposal` may be reserved for a while). Update `app = "..."` in `fly.toml` accordingly.
+2. If the app hostname changes, update the **Authorized redirect URI** in the [Google Cloud OAuth client](https://console.cloud.google.com/apis/credentials) to `https://<new-host>.fly.dev/auth/callback`.
+3. `fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... SESSION_SECRET="$(openssl rand -base64 48)" ALLOWED_EMAILS_RAW="you@example.com" LLM_API_KEY=...`
+4. `fly deploy`. The scheduler boots cold; the first news + market + signal pass runs immediately and the dashboard populates within ~2 minutes.
+
+Expected cost on resurrection: the same ~$5/month — Fly's Hobby plan has a $5 minimum even for a single shared-cpu-1x machine + 1 GB volume.
